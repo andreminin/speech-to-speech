@@ -49,7 +49,8 @@ import { OrbVisualiser, VIS_FFT_SIZE } from "./ws/orb-visualizer.js";
 import { SentAudioRecorder } from "./ws/user-audio-recorder.js";
 
 export const AUDIO_SAMPLE_RATE = 24_000;
-export const AUDIO_WORKLET_VERSION = "audio-24k-v1";
+console.log("[debug] s2s-realtime-client.js MODULE LOADED - patched build");
+export const AUDIO_WORKLET_VERSION = "debug2";
 const MIC_CHUNK_MS = 40;
 const CAPTURE_CONFIG_TIMEOUT_MS = 2_000;
 const SPEAKING_OPEN_DB = -50;
@@ -229,7 +230,12 @@ export class S2sRealtimeClient extends EventTarget {
         input: {
           format: { type: "audio/pcm", rate: AUDIO_SAMPLE_RATE },
           transcription: { model: "whisper-1" },
-          turnDetection: { type: "server_vad", interruptResponse: true },
+          // Disabled: the browser mic hears the assistant's own speaker output
+          // (no AEC on the raw AudioWorklet playback path), so barge-in was
+          // self-cancelling almost every reply before the user could hear it.
+          // With this off, a reply always plays to completion; speech detected
+          // mid-response is still transcribed and queued for the next turn.
+          turnDetection: { type: "server_vad", interruptResponse: false },
           noiseReduction: null,
         },
         output: {
@@ -399,6 +405,11 @@ export class S2sRealtimeClient extends EventTarget {
 
   /** @param {{data: ArrayBuffer, responseId?: string}} event */
   _onAudio(event) {
+    console.log("[debug] _onAudio fired", {
+      transport: this.options.transport,
+      hasPlaybackNode: !!this._playbackNode,
+      dataLen: event?.data?.byteLength,
+    });
     if (this.options.transport !== "websocket" || !this._playbackNode) return;
     const view = new DataView(event.data);
     const samples = new Float32Array(event.data.byteLength / 2);
